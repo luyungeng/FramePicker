@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, Video, Image as ImageIcon, Download, Settings, Layers, Scissors, Zap, Loader2, Trash2, Clock, Pipette } from "lucide-react";
+import { Upload, Video, Image as ImageIcon, Download, Settings, Layers, Scissors, Zap, Loader2, Trash2, Clock, Pipette, CheckCircle2, Circle, Play, Pause, FastForward } from "lucide-react";
 import { loadFFmpeg } from "@/lib/ffmpeg";
 import { fetchFile } from "@ffmpeg/util";
 import { downloadAsZip, generateSpriteSheet, removeBackground, hexToRgb } from "@/lib/image-utils";
@@ -22,7 +22,14 @@ export default function Home() {
   const [duration, setDuration] = useState("");
   const [videoDuration, setVideoDuration] = useState(0);
   
+  // Selection & Preview states
+  const [selectedFrames, setSelectedFrames] = useState<Set<number>>(new Set());
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [previewFrameIndex, setPreviewFrameIndex] = useState(0);
+  const [previewFps, setPreviewFps] = useState(10);
+  
   const videoRef = useRef<HTMLVideoElement>(null);
+  const previewTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -44,9 +51,62 @@ export default function Home() {
     } else {
       setVideoUrl(null);
       setFrames([]);
+      setSelectedFrames(new Set());
       setVideoDuration(0);
     }
   }, [file]);
+
+  // Preview animation logic
+  useEffect(() => {
+    if (isPreviewPlaying && frames.length > 0) {
+      const selectedIndices = Array.from(selectedFrames).sort((a, b) => a - b);
+      if (selectedIndices.length === 0) {
+        setIsPreviewPlaying(false);
+        return;
+      }
+
+      previewTimerRef.current = setInterval(() => {
+        setPreviewFrameIndex((prev) => {
+          const currentIndexInSelected = selectedIndices.indexOf(prev);
+          const nextIndexInSelected = (currentIndexInSelected + 1) % selectedIndices.length;
+          return selectedIndices[nextIndexInSelected];
+        });
+      }, 1000 / previewFps);
+    } else {
+      if (previewTimerRef.current) clearInterval(previewTimerRef.current);
+    }
+
+    return () => {
+      if (previewTimerRef.current) clearInterval(previewTimerRef.current);
+    };
+  }, [isPreviewPlaying, frames, selectedFrames, previewFps]);
+
+  const toggleFrameSelection = (index: number) => {
+    const newSelection = new Set(selectedFrames);
+    if (newSelection.has(index)) {
+      newSelection.delete(index);
+    } else {
+      newSelection.add(index);
+    }
+    setSelectedFrames(newSelection);
+    
+    // If we unselected the current preview frame, move to the next available one
+    if (!newSelection.has(previewFrameIndex)) {
+      const remaining = Array.from(newSelection).sort((a, b) => a - b);
+      if (remaining.length > 0) {
+        setPreviewFrameIndex(remaining[0]);
+      }
+    }
+  };
+
+  const selectAllFrames = () => {
+    setSelectedFrames(new Set(frames.keys()));
+  };
+
+  const deselectAllFrames = () => {
+    setSelectedFrames(new Set());
+    setIsPreviewPlaying(false);
+  };
 
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
@@ -124,6 +184,7 @@ export default function Home() {
       }
 
       setFrames(frameUrls);
+      setSelectedFrames(new Set(frameUrls.keys())); // Default select all
       
       // Cleanup
       await ffmpeg.deleteFile(inputName);
@@ -138,12 +199,16 @@ export default function Home() {
   };
 
   const handleDownload = async () => {
-    if (frames.length === 0) return;
+    if (frames.length === 0 || selectedFrames.size === 0) return;
+
+    const framesToExport = Array.from(selectedFrames)
+      .sort((a, b) => a - b)
+      .map(index => frames[index]);
 
     if (exportFormat === "zip") {
-      await downloadAsZip(frames, "frame-picker-sequence.zip");
+      await downloadAsZip(framesToExport, "frame-picker-sequence.zip");
     } else if (exportFormat === "spritesheet") {
-      const blob = await generateSpriteSheet(frames);
+      const blob = await generateSpriteSheet(framesToExport);
       if (blob) {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -159,6 +224,10 @@ export default function Home() {
         const ffmpeg = await loadFFmpeg();
         const inputName = "input.mp4";
         const outputName = "output.gif";
+        
+        // If we have specific frames selected, we should ideally generate GIF from them
+        // But for simplicity in the free version, we generate from the video segment
+        // Alternatively, we can use the selected frames if we want precise selection in GIF
         await ffmpeg.writeFile(inputName, await fetchFile(file));
         
         await ffmpeg.exec([
@@ -303,47 +372,146 @@ export default function Home() {
                 </div>
 
                 <div className="flex-1 p-6 flex flex-col gap-8 overflow-y-auto">
-                  {/* Video Preview */}
-                  <div className="aspect-video bg-slate-900 rounded-2xl overflow-hidden shadow-2xl relative group border border-slate-800">
-                    {videoUrl && (
-                      <video 
-                        ref={videoRef}
-                        src={videoUrl} 
-                        className="w-full h-full object-contain"
-                        controls
-                        onLoadedMetadata={handleLoadedMetadata}
-                      />
-                    )}
+                  {/* Top Section: Video & Preview Animation */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Video Preview */}
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                          <Video className="w-3 h-3" />
+                          原视频预览
+                        </h3>
+                      </div>
+                      <div className="aspect-video bg-slate-900 rounded-2xl overflow-hidden shadow-2xl relative group border border-slate-800">
+                        {videoUrl && (
+                          <video 
+                            ref={videoRef}
+                            src={videoUrl} 
+                            className="w-full h-full object-contain"
+                            controls
+                            onLoadedMetadata={handleLoadedMetadata}
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Animation Preview */}
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                          <Play className="w-3 h-3 text-emerald-500" />
+                          序列帧预览 (已选 {selectedFrames.size} 帧)
+                        </h3>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-mono font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">
+                            {previewFps} FPS
+                          </span>
+                        </div>
+                      </div>
+                      <div className="aspect-video bg-slate-900 rounded-2xl overflow-hidden shadow-2xl relative border border-slate-800 flex items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/checkerboard.png')]">
+                        {frames.length > 0 && selectedFrames.size > 0 ? (
+                          <div className="relative w-full h-full flex items-center justify-center">
+                            <img 
+                              src={frames[previewFrameIndex]} 
+                              alt="Preview" 
+                              className="max-w-full max-h-full object-contain"
+                            />
+                            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-3 bg-black/60 backdrop-blur-md px-4 py-2 rounded-full border border-white/10">
+                              <button 
+                                onClick={() => setIsPreviewPlaying(!isPreviewPlaying)}
+                                className="text-white hover:text-emerald-400 transition-colors"
+                              >
+                                {isPreviewPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
+                              </button>
+                              <div className="w-px h-4 bg-white/20" />
+                              <div className="flex items-center gap-2">
+                                <FastForward className="w-3 h-3 text-white/60" />
+                                <input 
+                                  type="range" 
+                                  min="1" 
+                                  max="60" 
+                                  value={previewFps}
+                                  onChange={(e) => setPreviewFps(parseInt(e.target.value))}
+                                  className="w-20 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                                />
+                              </div>
+                            </div>
+                            <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md px-2 py-1 rounded text-[10px] font-mono text-white border border-white/10">
+                              FRAME {previewFrameIndex + 1}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-center p-6">
+                            <ImageIcon className="w-8 h-8 text-slate-700 mb-2 mx-auto opacity-20" />
+                            <p className="text-xs text-slate-500">请先提取帧并选中至少一帧</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                   
-                  {/* Frames Results */}
-                  <div className="flex-1 flex flex-col">
+                  {/* Frames Results Grid */}
+                  <div className="flex-1 flex flex-col min-h-0">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="text-sm font-bold flex items-center gap-2">
-                        <Layers className="w-4 h-4 text-blue-600" />
-                        提取结果 
+                      <div className="flex items-center gap-4">
+                        <h3 className="text-sm font-bold flex items-center gap-2">
+                          <Layers className="w-4 h-4 text-blue-600" />
+                          提取结果 
+                          {frames.length > 0 && (
+                            <span className="bg-blue-100 text-blue-600 text-[10px] px-2 py-0.5 rounded-full">
+                              {frames.length} 帧
+                            </span>
+                          )}
+                        </h3>
                         {frames.length > 0 && (
-                          <span className="bg-blue-100 text-blue-600 text-[10px] px-2 py-0.5 rounded-full">
-                            {frames.length} 帧
-                          </span>
+                          <div className="flex items-center gap-2 border-l pl-4 dark:border-slate-800">
+                            <button 
+                              onClick={selectAllFrames}
+                              className="text-[10px] font-bold text-slate-500 hover:text-blue-600 transition-colors uppercase tracking-tight"
+                            >
+                              全选
+                            </button>
+                            <span className="text-slate-300">|</span>
+                            <button 
+                              onClick={deselectAllFrames}
+                              className="text-[10px] font-bold text-slate-500 hover:text-red-500 transition-colors uppercase tracking-tight"
+                            >
+                              取消全选
+                            </button>
+                          </div>
                         )}
-                      </h3>
+                      </div>
                       {frames.length > 0 && (
                         <button 
                           onClick={handleDownload}
-                          className="text-xs text-blue-600 font-bold flex items-center gap-1 hover:underline"
+                          disabled={selectedFrames.size === 0}
+                          className="text-xs text-blue-600 disabled:text-slate-300 font-bold flex items-center gap-1 hover:underline"
                         >
                           <Download className="w-3 h-3" />
-                          立即导出
+                          导出已选 ({selectedFrames.size})
                         </button>
                       )}
                     </div>
                     
                     {frames.length > 0 ? (
-                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 max-h-[400px] overflow-y-auto">
                         {frames.map((url, i) => (
-                          <div key={i} className="aspect-square bg-white dark:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-600 overflow-hidden relative group shadow-sm hover:shadow-md transition-shadow">
+                          <div 
+                            key={i} 
+                            onClick={() => toggleFrameSelection(i)}
+                            className={`aspect-square rounded-xl border-2 overflow-hidden relative group shadow-sm hover:shadow-md transition-all cursor-pointer ${
+                              selectedFrames.has(i) 
+                              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" 
+                              : "border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-700 opacity-60 grayscale-[0.5]"
+                            }`}
+                          >
                             <img src={url} alt={`Frame ${i}`} className="w-full h-full object-contain" />
+                            <div className={`absolute top-1.5 right-1.5 transition-transform ${selectedFrames.has(i) ? "scale-110" : "scale-100 opacity-0 group-hover:opacity-100"}`}>
+                              {selectedFrames.has(i) 
+                                ? <CheckCircle2 className="w-4 h-4 text-blue-500 fill-white" /> 
+                                : <Circle className="w-4 h-4 text-slate-400 fill-white" />
+                              }
+                            </div>
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-[1px]">
                               <span className="text-[10px] text-white font-mono font-bold">#{i+1}</span>
                             </div>
