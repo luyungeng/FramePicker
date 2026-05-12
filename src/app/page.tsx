@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { Upload, Video, Image as ImageIcon, Download, Settings, Layers, Scissors, Zap, Loader2, Trash2, Clock } from "lucide-react";
+import { Upload, Video, Image as ImageIcon, Download, Settings, Layers, Scissors, Zap, Loader2, Trash2, Clock, Pipette } from "lucide-react";
 import { loadFFmpeg } from "@/lib/ffmpeg";
 import { fetchFile } from "@ffmpeg/util";
-import { downloadAsZip, generateSpriteSheet, removeBackground } from "@/lib/image-utils";
+import { downloadAsZip, generateSpriteSheet, removeBackground, hexToRgb } from "@/lib/image-utils";
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
@@ -16,6 +16,7 @@ export default function Home() {
   const [exportFormat, setExportFormat] = useState("zip");
   const [bgRemoval, setBgRemoval] = useState("none");
   const [threshold, setThreshold] = useState(30);
+  const [bgColorHex, setBgColorHex] = useState("#000000");
   const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
   const [startTime, setStartTime] = useState("00:00:00");
   const [duration, setDuration] = useState("");
@@ -51,6 +52,23 @@ export default function Home() {
     if (videoRef.current) {
       setVideoDuration(videoRef.current.duration);
       setDuration(videoRef.current.duration.toFixed(2));
+    }
+  };
+
+  const openEyeDropper = async () => {
+    // Check if EyeDropper API is supported
+    if (typeof window !== "undefined" && "EyeDropper" in window) {
+      try {
+        // @ts-ignore - EyeDropper is a new API
+        const eyeDropper = new window.EyeDropper();
+        const result = await eyeDropper.open();
+        setBgColorHex(result.sRGBHex);
+        setBgRemoval("threshold");
+      } catch (e) {
+        console.error("EyeDropper failed:", e);
+      }
+    } else {
+      alert("您的浏览器不支持吸色器功能，请手动输入颜色或使用现代浏览器（如 Chrome/Edge）。");
     }
   };
 
@@ -99,8 +117,9 @@ export default function Home() {
       );
 
       if (bgRemoval === "threshold") {
+        const rgb = hexToRgb(bgColorHex);
         frameUrls = await Promise.all(
-          frameUrls.map(url => removeBackground(url, threshold))
+          frameUrls.map(url => removeBackground(url, threshold, rgb))
         );
       }
 
@@ -183,7 +202,6 @@ export default function Home() {
           <nav className="hidden md:flex items-center gap-6">
             <a href="#" className="text-sm font-medium hover:text-blue-600 transition-colors">功能</a>
             <a href="#" className="text-sm font-medium hover:text-blue-600 transition-colors">教程</a>
-            <a href="#" className="text-sm font-medium hover:text-blue-600 transition-colors">Pro版</a>
           </nav>
           <div className="flex items-center gap-4">
             {!ffmpegLoaded && (
@@ -192,9 +210,6 @@ export default function Home() {
                 正在加载核心组件...
               </div>
             )}
-            <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full text-sm font-medium transition-colors">
-              立即使用
-            </button>
           </div>
         </div>
       </header>
@@ -229,7 +244,6 @@ export default function Home() {
                   <div className="flex gap-4 text-xs font-medium text-slate-400">
                     <span className="flex items-center gap-1"><Zap className="w-3 h-3" /> 极速转换</span>
                     <span className="flex items-center gap-1"><Layers className="w-3 h-3" /> 自动图集</span>
-                    <span className="flex items-center gap-1"><Scissors className="w-3 h-3" /> AI 抠图</span>
                   </div>
                 </label>
               </div>
@@ -462,28 +476,52 @@ export default function Home() {
                           {bgRemoval === "threshold" && <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" />}
                         </button>
                         {bgRemoval === "threshold" && (
-                          <div className="space-y-3 animate-in fade-in slide-in-from-top-2">
-                            <div className="flex items-center justify-between">
-                              <label className="text-[11px] font-bold text-slate-500">敏感度 (Threshold)</label>
-                              <span className="text-[11px] font-mono font-bold text-purple-600">{threshold}</span>
+                          <div className="space-y-4 animate-in fade-in slide-in-from-top-2 pt-2 border-t border-purple-100 dark:border-purple-900/30">
+                            {/* Color Selection */}
+                            <div className="space-y-2">
+                              <label className="text-[11px] font-bold text-slate-500">背景颜色</label>
+                              <div className="flex items-center gap-2">
+                                <input 
+                                  type="color"
+                                  value={bgColorHex}
+                                  onChange={(e) => setBgColorHex(e.target.value)}
+                                  className="w-8 h-8 rounded-lg border shadow-sm shrink-0 cursor-pointer overflow-hidden p-0"
+                                />
+                                <input 
+                                  type="text"
+                                  value={bgColorHex}
+                                  onChange={(e) => setBgColorHex(e.target.value)}
+                                  className="flex-1 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-mono font-bold outline-none"
+                                />
+                                <button 
+                                  onClick={openEyeDropper}
+                                  className="p-2 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-lg hover:bg-slate-50 transition-colors shadow-sm"
+                                  title="从屏幕吸取颜色"
+                                >
+                                  <Pipette className="w-4 h-4 text-purple-600" />
+                                </button>
+                              </div>
+                              <p className="text-[9px] text-slate-400 italic">提示：点击吸管图标可从视频画面直接吸色</p>
                             </div>
-                            <input 
-                              type="range" 
-                              min="1" 
-                              max="100" 
-                              value={threshold}
-                              onChange={(e) => setThreshold(parseInt(e.target.value))}
-                              className="w-full h-1.5 bg-purple-200 dark:bg-purple-900/30 rounded-lg appearance-none cursor-pointer accent-purple-600" 
-                            />
+
+                            {/* Threshold Slider */}
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[11px] font-bold text-slate-500">敏感度 (Threshold)</label>
+                                <span className="text-[11px] font-mono font-bold text-purple-600">{threshold}</span>
+                              </div>
+                              <input 
+                                type="range" 
+                                min="1" 
+                                max="100" 
+                                value={threshold}
+                                onChange={(e) => setThreshold(parseInt(e.target.value))}
+                                className="w-full h-1.5 bg-purple-200 dark:bg-purple-900/30 rounded-lg appearance-none cursor-pointer accent-purple-600" 
+                              />
+                            </div>
                           </div>
                         )}
                       </div>
-                      <button className="w-full text-left px-4 py-3 text-sm border border-amber-200 bg-amber-50/50 dark:bg-amber-900/10 text-amber-600 dark:text-amber-500 rounded-xl flex items-center justify-between opacity-80 cursor-not-allowed group shadow-sm">
-                        <span className="font-bold">AI 智能抠图</span>
-                        <div className="flex items-center gap-1 bg-amber-200 text-amber-700 px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter">
-                          Pro
-                        </div>
-                      </button>
                     </div>
                   </section>
 
