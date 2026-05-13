@@ -26,12 +26,24 @@ export const downloadAsZip = async (imageUrls: string[], fileName: string = "fra
 /**
  * Generates a sprite sheet from image URLs.
  */
+export type GenerateSpriteSheetOptions = {
+  columns?: number;
+  backgroundColor?: string;
+  frameWidth?: number;
+  frameHeight?: number;
+};
+
 export const generateSpriteSheet = async (
-  imageUrls: string[], 
-  columns: number = 0, 
+  imageUrls: string[],
+  columnsOrOptions: number | GenerateSpriteSheetOptions = 0,
   backgroundColor: string = "transparent"
 ) => {
   if (imageUrls.length === 0) return null;
+
+  const options: GenerateSpriteSheetOptions =
+    typeof columnsOrOptions === "number"
+      ? { columns: columnsOrOptions, backgroundColor }
+      : columnsOrOptions;
 
   // Load all images
   const images = await Promise.all(
@@ -46,11 +58,12 @@ export const generateSpriteSheet = async (
   );
 
   const firstImg = images[0];
-  const frameWidth = firstImg.width;
-  const frameHeight = firstImg.height;
+  const frameWidth = Math.max(1, Math.floor(options.frameWidth ?? firstImg.width));
+  const frameHeight = Math.max(1, Math.floor(options.frameHeight ?? firstImg.height));
   const totalFrames = images.length;
 
   // Calculate grid
+  let columns = options.columns ?? 0;
   if (columns <= 0) {
     columns = Math.ceil(Math.sqrt(totalFrames));
   }
@@ -64,8 +77,9 @@ export const generateSpriteSheet = async (
   if (!ctx) return null;
 
   // Fill background
-  if (backgroundColor !== "transparent") {
-    ctx.fillStyle = backgroundColor;
+  const fillColor = options.backgroundColor ?? "transparent";
+  if (fillColor !== "transparent") {
+    ctx.fillStyle = fillColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
@@ -73,7 +87,17 @@ export const generateSpriteSheet = async (
   images.forEach((img, index) => {
     const col = index % columns;
     const row = Math.floor(index / columns);
-    ctx.drawImage(img, col * frameWidth, row * frameHeight);
+    ctx.drawImage(
+      img,
+      0,
+      0,
+      img.width,
+      img.height,
+      col * frameWidth,
+      row * frameHeight,
+      frameWidth,
+      frameHeight
+    );
   });
 
   return new Promise<Blob | null>((resolve) => {

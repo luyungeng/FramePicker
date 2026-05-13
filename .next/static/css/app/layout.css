@@ -1370,6 +1370,9 @@ video {
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   transition-duration: 150ms;
 }
+.\[grid-template-columns\:repeat\(auto-fill\2c minmax\(84px\2c 1fr\)\)\] {
+  grid-template-columns: repeat(auto-fill,minmax(84px,1fr));
+}
 
 :root {
   --background: #ffffff;
@@ -1497,13 +1500,6 @@ body {
   opacity: 1;
 }
 
-@media (min-width: 640px) {
-
-  .sm\:grid-cols-4 {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
 @media (min-width: 768px) {
 
   .md\:flex {
@@ -1522,10 +1518,6 @@ body {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .md\:grid-cols-6 {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-
   .md\:py-12 {
     padding-top: 3rem;
     padding-bottom: 3rem;
@@ -1541,10 +1533,6 @@ body {
 
   .lg\:w-96 {
     width: 24rem;
-  }
-
-  .lg\:grid-cols-8 {
-    grid-template-columns: repeat(8, minmax(0, 1fr));
   }
 
   .lg\:flex-row {
@@ -1616,6 +1604,10 @@ body {
     background-color: rgb(15 23 42 / var(--tw-bg-opacity, 1));
   }
 
+  .dark\:bg-slate-900\/40 {
+    background-color: rgb(15 23 42 / 0.4);
+  }
+
   .dark\:bg-slate-900\/50 {
     background-color: rgb(15 23 42 / 0.5);
   }
@@ -1623,6 +1615,11 @@ body {
   .dark\:bg-slate-950 {
     --tw-bg-opacity: 1;
     background-color: rgb(2 6 23 / var(--tw-bg-opacity, 1));
+  }
+
+  .dark\:text-slate-100 {
+    --tw-text-opacity: 1;
+    color: rgb(241 245 249 / var(--tw-text-opacity, 1));
   }
 
   .dark\:text-slate-200 {

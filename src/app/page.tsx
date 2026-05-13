@@ -14,6 +14,9 @@ export default function Home() {
   const [frames, setFrames] = useState<string[]>([]);
   const [fps, setFps] = useState(30);
   const [exportFormat, setExportFormat] = useState("zip");
+  const [spriteFrameWidth, setSpriteFrameWidth] = useState(0);
+  const [spriteFrameHeight, setSpriteFrameHeight] = useState(0);
+  const [spriteSizeAuto, setSpriteSizeAuto] = useState(true);
   const [bgRemoval, setBgRemoval] = useState("none");
   const [threshold, setThreshold] = useState(30);
   const [bgColorHex, setBgColorHex] = useState("#000000");
@@ -60,8 +63,22 @@ export default function Home() {
       setFrames([]);
       setSelectedFrames(new Set());
       setVideoDuration(0);
+      setSpriteSizeAuto(true);
+      setSpriteFrameWidth(0);
+      setSpriteFrameHeight(0);
     }
   }, [file]);
+
+  useEffect(() => {
+    if (!spriteSizeAuto) return;
+    if (frames.length === 0) return;
+    const img = new Image();
+    img.onload = () => {
+      setSpriteFrameWidth(img.width);
+      setSpriteFrameHeight(img.height);
+    };
+    img.src = frames[0];
+  }, [frames, spriteSizeAuto]);
 
   useEffect(() => {
     if (isPreviewPlaying && frames.length > 0) {
@@ -208,7 +225,10 @@ export default function Home() {
     if (exportFormat === "zip") {
       await downloadAsZip(framesToExport, "frame-picker-sequence.zip");
     } else if (exportFormat === "spritesheet") {
-      const blob = await generateSpriteSheet(framesToExport);
+      const blob = await generateSpriteSheet(framesToExport, {
+        frameWidth: spriteFrameWidth > 0 ? spriteFrameWidth : undefined,
+        frameHeight: spriteFrameHeight > 0 ? spriteFrameHeight : undefined,
+      });
       if (blob) {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -501,7 +521,7 @@ export default function Home() {
                     </div>
                     
                     {frames.length > 0 ? (
-                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 max-h-[400px] overflow-y-auto">
+                      <div className="grid [grid-template-columns:repeat(auto-fill,minmax(84px,1fr))] gap-3 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800 max-h-[400px] overflow-y-auto">
                         {frames.map((url, i) => (
                           <div 
                             key={i} 
@@ -727,6 +747,55 @@ export default function Home() {
                           </button>
                         ))}
                       </div>
+                      {exportFormat === "spritesheet" && (
+                        <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-sm space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-600 dark:text-slate-200">单格大小 (像素)</span>
+                            <button
+                              type="button"
+                              onClick={() => setSpriteSizeAuto(true)}
+                              className="text-[10px] font-bold text-slate-500 hover:text-blue-600 transition-colors uppercase tracking-tight"
+                            >
+                              使用原图尺寸
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-xl p-3">
+                              <span className="text-[10px] text-slate-400 block mb-1 uppercase font-bold tracking-tighter">宽度</span>
+                              <input
+                                type="number"
+                                min={1}
+                                value={spriteFrameWidth || ""}
+                                onChange={(e) => {
+                                  setSpriteSizeAuto(false);
+                                  const v = e.target.value === "" ? 0 : Math.max(1, Math.floor(Number(e.target.value)));
+                                  setSpriteFrameWidth(v);
+                                }}
+                                className="w-full text-sm font-mono font-bold bg-transparent outline-none text-slate-800 dark:text-slate-100"
+                                placeholder="自动"
+                              />
+                            </div>
+                            <div className="bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700 rounded-xl p-3">
+                              <span className="text-[10px] text-slate-400 block mb-1 uppercase font-bold tracking-tighter">高度</span>
+                              <input
+                                type="number"
+                                min={1}
+                                value={spriteFrameHeight || ""}
+                                onChange={(e) => {
+                                  setSpriteSizeAuto(false);
+                                  const v = e.target.value === "" ? 0 : Math.max(1, Math.floor(Number(e.target.value)));
+                                  setSpriteFrameHeight(v);
+                                }}
+                                className="w-full text-sm font-mono font-bold bg-transparent outline-none text-slate-800 dark:text-slate-100"
+                                placeholder="自动"
+                              />
+                            </div>
+                          </div>
+                          <p className="text-[11px] text-slate-500 leading-relaxed">
+                            导出精灵图时会将每帧缩放到指定宽高，并按网格严格排列。
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </section>
                 </div>
