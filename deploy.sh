@@ -164,7 +164,7 @@ $SUDO mkdir -p "$DEPLOY_DIR/ffmpeg"
 FFMPEG_CORE_BASE="${FFMPEG_CORE_BASE:-https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd}"
 $SUDO curl -L --fail -o "$DEPLOY_DIR/ffmpeg/ffmpeg-core.js" "$FFMPEG_CORE_BASE/ffmpeg-core.js" >/dev/null
 $SUDO curl -L --fail -o "$DEPLOY_DIR/ffmpeg/ffmpeg-core.wasm" "$FFMPEG_CORE_BASE/ffmpeg-core.wasm" >/dev/null
-$SUDO curl -L --fail -o "$DEPLOY_DIR/ffmpeg/ffmpeg-core.worker.js" "$FFMPEG_CORE_BASE/ffmpeg-core.worker.js" >/dev/null
+$SUDO curl -L -o "$DEPLOY_DIR/ffmpeg/ffmpeg-core.worker.js" "$FFMPEG_CORE_BASE/ffmpeg-core.worker.js" >/dev/null 2>&1 || true
 $SUDO chmod -R a+rX "$DEPLOY_DIR/ffmpeg"
 
 if command -v getenforce >/dev/null 2>&1; then

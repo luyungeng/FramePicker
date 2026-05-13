@@ -43,7 +43,6 @@ export const loadFFmpeg = async (): Promise<FFmpeg> => {
       await instance.load({
         coreURL: await toBlobURLWithTimeout(`${baseURL}/ffmpeg-core.js`, "text/javascript", 30000),
         wasmURL: await toBlobURLWithTimeout(`${baseURL}/ffmpeg-core.wasm`, "application/wasm", 30000),
-        workerURL: await toBlobURLWithTimeout(`${baseURL}/ffmpeg-core.worker.js`, "text/javascript", 30000),
       });
       ffmpeg = instance;
       return instance;
