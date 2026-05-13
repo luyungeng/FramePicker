@@ -18,6 +18,7 @@ export default function Home() {
   const [threshold, setThreshold] = useState(30);
   const [bgColorHex, setBgColorHex] = useState("#000000");
   const [ffmpegLoaded, setFfmpegLoaded] = useState(false);
+  const [ffmpegError, setFfmpegError] = useState<string | null>(null);
   const [startTime, setStartTime] = useState("00:00:00");
   const [duration, setDuration] = useState("");
   const [videoDuration, setVideoDuration] = useState(0);
@@ -30,16 +31,23 @@ export default function Home() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const previewTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  const initFFmpeg = async () => {
+    setFfmpegError(null);
+    setFfmpegLoaded(false);
+    try {
+      await Promise.race([
+        loadFFmpeg(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("load-timeout")), 30000)),
+      ]);
+      setFfmpegLoaded(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setFfmpegError(message);
+    }
+  };
+
   useEffect(() => {
-    const init = async () => {
-      try {
-        await loadFFmpeg();
-        setFfmpegLoaded(true);
-      } catch (error) {
-        console.error("Failed to load FFmpeg:", error);
-      }
-    };
-    init();
+    initFFmpeg();
   }, []);
 
   useEffect(() => {
@@ -261,10 +269,21 @@ export default function Home() {
             <a href="#" className="text-sm font-medium hover:text-blue-600 transition-colors">教程</a>
           </nav>
           <div className="flex items-center gap-4">
-            {!ffmpegLoaded && (
+            {!ffmpegLoaded && !ffmpegError && (
               <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
                 <Loader2 className="w-3 h-3 animate-spin" />
                 正在加载核心组件...
+              </div>
+            )}
+            {!ffmpegLoaded && ffmpegError && (
+              <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200">
+                <span className="font-bold">核心组件加载失败</span>
+                <button
+                  onClick={initFFmpeg}
+                  className="text-red-700 underline font-bold"
+                >
+                  重试
+                </button>
               </div>
             )}
           </div>

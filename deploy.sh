@@ -5,7 +5,10 @@ REPO_URL="${REPO_URL:-https://github.com/luyungeng/FramePicker.git}"
 REF="${REF:-}"
 NODE_IMAGE="${NODE_IMAGE:-node:20-bullseye}"
 
+REPO_URL="$(printf "%s" "$REPO_URL" | tr -d '\r`')"
+
 DEPLOY_DIR="${DEPLOY_DIR:-$(pwd)}"
+BASE_PATH="${BASE_PATH:-}"
 SERVER_NAME="${SERVER_NAME:-_}"
 LISTEN_PORT="${LISTEN_PORT:-80}"
 NGINX_CONF_NAME="${NGINX_CONF_NAME:-framepicker.conf}"
@@ -26,6 +29,7 @@ trap cleanup EXIT
 echo "==========================================="
 echo "FramePicker 一键部署（静态版）"
 echo "部署目录: $DEPLOY_DIR"
+echo "站点路径: ${BASE_PATH:-/}"
 echo "仓库: $REPO_URL"
 echo "==========================================="
 
@@ -52,18 +56,18 @@ else
 fi
 
 if [[ -z "$REF" ]]; then
-  REF="$(git ls-remote --symref "$REPO_URL" HEAD 2>/dev/null | awk '/^ref:/ {sub(\"refs/heads/\",\"\",$2); print $2; exit}')"
-  if [[ -z "$REF" ]]; then
-    REF="main"
-  fi
+  REF="master"
 fi
 
 SRC_DIR="$WORKDIR/src"
 echo ">>> 克隆仓库 ($REF)..."
 if ! git clone --depth 1 --branch "$REF" "$REPO_URL" "$SRC_DIR" >/dev/null 2>&1; then
-  if [[ "$REF" != "master" ]]; then
-    REF="master"
-    git clone --depth 1 --branch "$REF" "$REPO_URL" "$SRC_DIR" >/dev/null
+  if [[ "$REF" != "main" ]]; then
+    REF="main"
+    if ! git clone --depth 1 --branch "$REF" "$REPO_URL" "$SRC_DIR" >/dev/null 2>&1; then
+      echo "克隆失败：请检查仓库地址或分支名"
+      exit 1
+    fi
   else
     echo "克隆失败：请检查仓库地址或分支名"
     exit 1
@@ -76,7 +80,32 @@ for cfg in "$SRC_DIR/next.config.js" "$SRC_DIR/next.config.mjs" "$SRC_DIR/next.c
     mv "$cfg" "$cfg.bak.$(date +%s)"
   fi
 done
-cat > "$SRC_DIR/next.config.js" <<'EOF'
+BASE_PATH_CLEAN="$(printf "%s" "$BASE_PATH" | tr -d '\r')"
+if [[ -n "$BASE_PATH_CLEAN" ]]; then
+  if [[ "$BASE_PATH_CLEAN" != /* ]]; then
+    BASE_PATH_CLEAN="/$BASE_PATH_CLEAN"
+  fi
+  if [[ "$BASE_PATH_CLEAN" != "/" ]]; then
+    BASE_PATH_CLEAN="${BASE_PATH_CLEAN%/}"
+  else
+    BASE_PATH_CLEAN=""
+  fi
+fi
+
+if [[ -n "$BASE_PATH_CLEAN" ]]; then
+  cat > "$SRC_DIR/next.config.js" <<EOF
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  output: 'export',
+  trailingSlash: true,
+  basePath: '${BASE_PATH_CLEAN}',
+  assetPrefix: '${BASE_PATH_CLEAN}',
+}
+
+module.exports = nextConfig
+EOF
+else
+  cat > "$SRC_DIR/next.config.js" <<'EOF'
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'export',
@@ -85,6 +114,7 @@ const nextConfig = {
 
 module.exports = nextConfig
 EOF
+fi
 
 VOLUME_SUFFIX=""
 if command -v getenforce >/dev/null 2>&1; then
@@ -114,7 +144,11 @@ fi
 
 echo ">>> 发布静态文件到部署目录..."
 $SUDO mkdir -p "$DEPLOY_DIR"
-$SUDO rm -rf "${DEPLOY_DIR:?}/"*
+if [[ -f "$DEPLOY_DIR/deploy.sh" ]]; then
+  $SUDO find "$DEPLOY_DIR" -mindepth 1 -maxdepth 1 ! -name "deploy.sh" -exec rm -rf {} +
+else
+  $SUDO rm -rf "${DEPLOY_DIR:?}/"*
+fi
 $SUDO cp -a "$SRC_DIR/out/." "$DEPLOY_DIR/"
 $SUDO chmod -R a+rX "$DEPLOY_DIR"
 
@@ -137,7 +171,29 @@ fi
 if [[ "$CONFIGURE_NGINX" == "1" ]] && [[ -d "/etc/nginx" ]]; then
   echo ">>> 写入 Nginx 配置并重载..."
   $SUDO mkdir -p /etc/nginx/conf.d
-  $SUDO tee "/etc/nginx/conf.d/$NGINX_CONF_NAME" >/dev/null <<EOF
+  if [[ -n "$BASE_PATH_CLEAN" ]]; then
+    PARENT_DIR="$(dirname "$DEPLOY_DIR")"
+    $SUDO tee "/etc/nginx/conf.d/$NGINX_CONF_NAME" >/dev/null <<EOF
+server {
+  listen ${LISTEN_PORT};
+  server_name ${SERVER_NAME};
+
+  root ${PARENT_DIR};
+  index index.html;
+
+  location = ${BASE_PATH_CLEAN} {
+    return 301 ${BASE_PATH_CLEAN}/;
+  }
+
+  location ${BASE_PATH_CLEAN}/ {
+    try_files \$uri \$uri/ ${BASE_PATH_CLEAN}/index.html;
+    add_header Cross-Origin-Opener-Policy "same-origin" always;
+    add_header Cross-Origin-Embedder-Policy "credentialless" always;
+  }
+}
+EOF
+  else
+    $SUDO tee "/etc/nginx/conf.d/$NGINX_CONF_NAME" >/dev/null <<EOF
 server {
   listen ${LISTEN_PORT};
   server_name ${SERVER_NAME};
@@ -152,6 +208,7 @@ server {
   }
 }
 EOF
+  fi
 
   $SUDO nginx -t >/dev/null
   $SUDO nginx -s reload >/dev/null
