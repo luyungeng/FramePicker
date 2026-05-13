@@ -81,6 +81,83 @@ if ! git clone --depth 1 --branch "$REF" "$REPO_URL" "$SRC_DIR" >/dev/null 2>&1;
   fi
 fi
 
+echo ">>> 修复 ffmpeg.wasm 加载策略（同域加载，禁用 workerURL 以避免 404/CORS）..."
+FFMPEG_LOADER_PATH=""
+if [[ -f "$SRC_DIR/src/lib/ffmpeg.ts" ]]; then
+  FFMPEG_LOADER_PATH="$SRC_DIR/src/lib/ffmpeg.ts"
+elif [[ -f "$SRC_DIR/lib/ffmpeg.ts" ]]; then
+  FFMPEG_LOADER_PATH="$SRC_DIR/lib/ffmpeg.ts"
+fi
+
+if [[ -n "$FFMPEG_LOADER_PATH" ]]; then
+  cat > "$FFMPEG_LOADER_PATH" <<'EOF'
+import { FFmpeg } from "@ffmpeg/ffmpeg";
+
+let ffmpeg: FFmpeg | null = null;
+
+const toBlobURLWithTimeout = async (url: string, mimeType: string, timeoutMs: number) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) {
+      throw new Error(`Fetch failed: ${res.status} ${res.statusText}`);
+    }
+    const blob = await res.blob();
+    const typedBlob = new Blob([blob], { type: mimeType });
+    return URL.createObjectURL(typedBlob);
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+export const loadFFmpeg = async (): Promise<FFmpeg> => {
+  if (ffmpeg) return ffmpeg;
+
+  const instance = new FFmpeg();
+
+  const localBaseURL =
+    typeof window !== "undefined"
+      ? new URL("./ffmpeg", window.location.href).toString().replace(/\/$/, "")
+      : "";
+
+  const baseURLs = [
+    localBaseURL,
+    "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd",
+    "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd",
+  ].filter(Boolean) as string[];
+
+  let lastError: unknown = null;
+  for (const baseURL of baseURLs) {
+    try {
+      await instance.load({
+        coreURL: await toBlobURLWithTimeout(`${baseURL}/ffmpeg-core.js`, "text/javascript", 30000),
+        wasmURL: await toBlobURLWithTimeout(`${baseURL}/ffmpeg-core.wasm`, "application/wasm", 30000),
+      });
+      ffmpeg = instance;
+      return instance;
+    } catch (e) {
+      lastError = e;
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+  throw new Error("FFmpeg load failed.");
+};
+
+export const getFFmpeg = () => {
+  if (!ffmpeg) {
+    throw new Error("FFmpeg not loaded. Call loadFFmpeg first.");
+  }
+  return ffmpeg;
+};
+EOF
+else
+  echo "未找到 ffmpeg 加载器文件（跳过修复）：src/lib/ffmpeg.ts"
+fi
+
 echo ">>> 启用 Next 静态导出..."
 for cfg in "$SRC_DIR/next.config.js" "$SRC_DIR/next.config.mjs" "$SRC_DIR/next.config.ts"; do
   if [[ -f "$cfg" ]]; then
