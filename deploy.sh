@@ -20,6 +20,13 @@ if [[ "$(id -u)" != "0" ]]; then
   SUDO="sudo"
 fi
 
+if [[ -z "$BASE_PATH" ]]; then
+  DEPLOY_BASENAME="$(basename "$DEPLOY_DIR")"
+  if [[ "$DEPLOY_BASENAME" != "/" ]] && [[ -n "$DEPLOY_BASENAME" ]]; then
+    BASE_PATH="/$DEPLOY_BASENAME"
+  fi
+fi
+
 WORKDIR="$(mktemp -d /tmp/framepicker-deploy.XXXXXX)"
 cleanup() {
   rm -rf "$WORKDIR" || true
@@ -152,6 +159,14 @@ fi
 $SUDO cp -a "$SRC_DIR/out/." "$DEPLOY_DIR/"
 $SUDO chmod -R a+rX "$DEPLOY_DIR"
 
+echo ">>> 准备 ffmpeg.wasm 本地资源（避免 CDN CORS 问题）..."
+$SUDO mkdir -p "$DEPLOY_DIR/ffmpeg"
+FFMPEG_CORE_BASE="${FFMPEG_CORE_BASE:-https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd}"
+$SUDO curl -L --fail -o "$DEPLOY_DIR/ffmpeg/ffmpeg-core.js" "$FFMPEG_CORE_BASE/ffmpeg-core.js" >/dev/null
+$SUDO curl -L --fail -o "$DEPLOY_DIR/ffmpeg/ffmpeg-core.wasm" "$FFMPEG_CORE_BASE/ffmpeg-core.wasm" >/dev/null
+$SUDO curl -L --fail -o "$DEPLOY_DIR/ffmpeg/ffmpeg-core.worker.js" "$FFMPEG_CORE_BASE/ffmpeg-core.worker.js" >/dev/null
+$SUDO chmod -R a+rX "$DEPLOY_DIR/ffmpeg"
+
 if command -v getenforce >/dev/null 2>&1; then
   ENFORCE_STATE="$(getenforce || true)"
   if [[ "$ENFORCE_STATE" == "Enforcing" ]] && command -v chcon >/dev/null 2>&1; then
@@ -179,6 +194,8 @@ server {
   server_name ${SERVER_NAME};
 
   root ${PARENT_DIR};
+  include /etc/nginx/mime.types;
+  types { application/wasm wasm; }
   index index.html;
 
   location = ${BASE_PATH_CLEAN} {
@@ -199,6 +216,8 @@ server {
   server_name ${SERVER_NAME};
 
   root ${DEPLOY_DIR};
+  include /etc/nginx/mime.types;
+  types { application/wasm wasm; }
   index index.html;
 
   location / {

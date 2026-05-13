@@ -23,11 +23,19 @@ export const loadFFmpeg = async (): Promise<FFmpeg> => {
 
   const instance = new FFmpeg();
 
+  const localBaseURL =
+    typeof window !== "undefined"
+      ? new URL("./ffmpeg", window.location.href).toString().replace(/\/$/, "")
+      : "";
+
   const baseURLs = [
+    localBaseURL,
     (process.env.NEXT_PUBLIC_FFMPEG_BASE_URL || "").trim(),
-    "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd",
     "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd",
-  ].filter(Boolean) as string[];
+    "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd",
+  ]
+    .map((s) => s.trim())
+    .filter(Boolean) as string[];
 
   let lastError: unknown = null;
   for (const baseURL of baseURLs) {
