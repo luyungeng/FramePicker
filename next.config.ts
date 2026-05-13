@@ -1,23 +1,30 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  async headers() {
-    return [
-      {
-        source: "/(.*)",
-        headers: [
+const isExport = process.env.NEXT_OUTPUT === "export";
+
+const nextConfig: NextConfig = isExport
+  ? {
+      output: "export",
+      trailingSlash: true,
+    }
+  : {
+      async headers() {
+        return [
           {
-            key: "Cross-Origin-Opener-Policy",
-            value: "same-origin",
+            source: "/(.*)",
+            headers: [
+              {
+                key: "Cross-Origin-Opener-Policy",
+                value: "same-origin",
+              },
+              {
+                key: "Cross-Origin-Embedder-Policy",
+                value: "credentialless",
+              },
+            ],
           },
-          {
-            key: "Cross-Origin-Embedder-Policy",
-            value: "credentialless",
-          },
-        ],
+        ];
       },
-    ];
-  },
-};
+    };
 
 export default nextConfig;

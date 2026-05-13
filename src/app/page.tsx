@@ -22,7 +22,6 @@ export default function Home() {
   const [duration, setDuration] = useState("");
   const [videoDuration, setVideoDuration] = useState(0);
   
-  // Selection & Preview states
   const [selectedFrames, setSelectedFrames] = useState<Set<number>>(new Set());
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
   const [previewFrameIndex, setPreviewFrameIndex] = useState(0);
@@ -56,7 +55,6 @@ export default function Home() {
     }
   }, [file]);
 
-  // Preview animation logic
   useEffect(() => {
     if (isPreviewPlaying && frames.length > 0) {
       const selectedIndices = Array.from(selectedFrames).sort((a, b) => a - b);
@@ -90,7 +88,6 @@ export default function Home() {
     }
     setSelectedFrames(newSelection);
     
-    // If we unselected the current preview frame, move to the next available one
     if (!newSelection.has(previewFrameIndex)) {
       const remaining = Array.from(newSelection).sort((a, b) => a - b);
       if (remaining.length > 0) {
@@ -116,11 +113,9 @@ export default function Home() {
   };
 
   const openEyeDropper = async () => {
-    // Check if EyeDropper API is supported
     if (typeof window !== "undefined" && "EyeDropper" in window) {
       try {
-        // @ts-ignore - EyeDropper is a new API
-        const eyeDropper = new window.EyeDropper();
+        const eyeDropper = new (window as any).EyeDropper();
         const result = await eyeDropper.open();
         setBgColorHex(result.sRGBHex);
         setBgRemoval("threshold");
@@ -150,7 +145,6 @@ export default function Home() {
         setProgress(Math.round(progress * 100));
       });
 
-      // Frame extraction command with time range
       const args = [
         "-ss", startTime,
         "-t", duration || videoDuration.toString(),
@@ -170,7 +164,6 @@ export default function Home() {
       let frameUrls = await Promise.all(
         frameFiles.map(async (f) => {
           const data = await ffmpeg.readFile(f.name);
-          // Cast to Uint8Array to fix SharedArrayBuffer compatibility issues in TS
           const blob = new Blob([data as any], { type: "image/png" });
           return URL.createObjectURL(blob);
         })
@@ -184,9 +177,8 @@ export default function Home() {
       }
 
       setFrames(frameUrls);
-      setSelectedFrames(new Set(frameUrls.keys())); // Default select all
+      setSelectedFrames(new Set(frameUrls.keys()));
       
-      // Cleanup
       await ffmpeg.deleteFile(inputName);
       for (const f of frameFiles) {
         await ffmpeg.deleteFile(f.name);
@@ -224,10 +216,6 @@ export default function Home() {
         const ffmpeg = await loadFFmpeg();
         const inputName = "input.mp4";
         const outputName = "output.gif";
-        
-        // If we have specific frames selected, we should ideally generate GIF from them
-        // But for simplicity in the free version, we generate from the video segment
-        // Alternatively, we can use the selected frames if we want precise selection in GIF
         await ffmpeg.writeFile(inputName, await fetchFile(file));
         
         await ffmpeg.exec([
